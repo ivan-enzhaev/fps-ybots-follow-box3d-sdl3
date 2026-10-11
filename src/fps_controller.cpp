@@ -10,15 +10,15 @@ void handleFpsEvents(App *app, SDL_Event *event)
     // =========================================================================
     if (event->type == SDL_EVENT_FINGER_DOWN)
     {
-        int winW, winH;
+        int winW = 800, winH = 600;
         SDL_GetWindowSizeInPixels(app->window, &winW, &winH);
         float touchPixelX = event->tfinger.x * (float)winW;
         float touchPixelY = event->tfinger.y * (float)winH;
 
-        // Check Jump Button (Bottom Right Circle)
+        // Check Jump Button (Bottom Right)
         float jumpBtnX = (float)winW - 90.0f * app->scale_factor;
         float jumpBtnY = (float)winH - 90.0f * app->scale_factor;
-        float jumpRadius = 45.0f * app->scale_factor;
+        float jumpRadius = 50.0f * app->scale_factor;
         float dJumpX = touchPixelX - jumpBtnX;
         float dJumpY = touchPixelY - jumpBtnY;
 
@@ -32,7 +32,7 @@ void handleFpsEvents(App *app, SDL_Event *event)
         // Left half of screen -> Movement Joystick
         if (event->tfinger.x < 0.5f)
         {
-            if (app->moveFingerId == -1)
+            if (!app->moveTouchActive)
             {
                 app->moveFingerId = event->tfinger.fingerID;
                 app->moveTouchActive = true;
@@ -47,7 +47,7 @@ void handleFpsEvents(App *app, SDL_Event *event)
         // Right half of screen -> Touch Look / Aim Drag
         else
         {
-            if (app->lookFingerId == -1)
+            if (!app->lookTouchActive)
             {
                 app->lookFingerId = event->tfinger.fingerID;
                 app->lookTouchActive = true;
@@ -58,13 +58,13 @@ void handleFpsEvents(App *app, SDL_Event *event)
     }
     else if (event->type == SDL_EVENT_FINGER_MOTION)
     {
-        int winW, winH;
+        int winW = 800, winH = 600;
         SDL_GetWindowSizeInPixels(app->window, &winW, &winH);
         float touchPixelX = event->tfinger.x * (float)winW;
         float touchPixelY = event->tfinger.y * (float)winH;
 
         // Update Movement Joystick
-        if (event->tfinger.fingerID == app->moveFingerId && app->moveTouchActive)
+        if (app->moveTouchActive && event->tfinger.fingerID == app->moveFingerId)
         {
             app->moveTouchCurX = touchPixelX;
             app->moveTouchCurY = touchPixelY;
@@ -74,16 +74,21 @@ void handleFpsEvents(App *app, SDL_Event *event)
             float maxRadius = 65.0f * app->scale_factor;
             float dist = std::sqrt(dx * dx + dy * dy);
 
-            if (dist > 0.0f)
+            if (dist > 0.001f)
             {
                 float clampedDist = std::min(dist, maxRadius);
                 app->moveX_joystick = (dx / dist) * (clampedDist / maxRadius);
                 app->moveZ_joystick = (dy / dist) * (clampedDist / maxRadius);
             }
+            else
+            {
+                app->moveX_joystick = 0.0f;
+                app->moveZ_joystick = 0.0f;
+            }
         }
 
         // Update Look / Aim Rotation
-        if (event->tfinger.fingerID == app->lookFingerId && app->lookTouchActive)
+        if (app->lookTouchActive && event->tfinger.fingerID == app->lookFingerId)
         {
             float dx = touchPixelX - app->lookTouchLastX;
             float dy = touchPixelY - app->lookTouchLastY;
@@ -99,21 +104,19 @@ void handleFpsEvents(App *app, SDL_Event *event)
     }
     else if (event->type == SDL_EVENT_FINGER_UP || event->type == SDL_EVENT_FINGER_CANCELED)
     {
-        if (event->tfinger.fingerID == app->moveFingerId)
+        if (app->moveTouchActive && event->tfinger.fingerID == app->moveFingerId)
         {
-            app->moveFingerId = -1;
             app->moveTouchActive = false;
             app->moveX_joystick = 0.0f;
             app->moveZ_joystick = 0.0f;
         }
-        if (event->tfinger.fingerID == app->lookFingerId)
+        if (app->lookTouchActive && event->tfinger.fingerID == app->lookFingerId)
         {
-            app->lookFingerId = -1;
             app->lookTouchActive = false;
         }
         if (event->tfinger.fingerID == app->jumpFingerId)
         {
-            app->jumpFingerId = -1;
+            app->jumpFingerId = (SDL_FingerID)-1;
         }
     }
 
@@ -133,7 +136,6 @@ void handleFpsEvents(App *app, SDL_Event *event)
     {
         if (!app->isMobile && !app->mouseCaptured)
         {
-            // Do not lock if user clicked on the ImGui "Settings" window
             if (app->io && app->io->WantCaptureMouse)
             {
                 return;
@@ -166,7 +168,7 @@ void handleFpsEvents(App *app, SDL_Event *event)
 
 void updateFpsController(App *app, float deltaTime)
 {
-    // 1. Calculate Camera Front Vector
+    // Calculate Camera Front Vector
     float yawRad = glm_rad(app->yaw);
     float pitchRad = glm_rad(app->pitch);
 
@@ -175,7 +177,7 @@ void updateFpsController(App *app, float deltaTime)
     app->cameraFront[2] = std::sin(yawRad) * std::cos(pitchRad);
     glm_vec3_normalize(app->cameraFront);
 
-    // 2. Horizontal Forward and Right Directions
+    // Horizontal Forward and Right Directions
     vec3 forwardDir = { app->cameraFront[0], 0.0f, app->cameraFront[2] };
     glm_vec3_normalize(forwardDir);
 
@@ -184,7 +186,7 @@ void updateFpsController(App *app, float deltaTime)
     glm_vec3_cross(forwardDir, upDir, rightDir);
     glm_vec3_normalize(rightDir);
 
-    // 3. Accumulate Movement
+    // Accumulate Movement
     vec3 moveDir = { 0.0f, 0.0f, 0.0f };
 
     // Keyboard (WASD)
@@ -207,7 +209,7 @@ void updateFpsController(App *app, float deltaTime)
         glm_vec3_add(moveDir, joyRight, moveDir);
     }
 
-    // 4. Set Linear Velocity
+    // Set Linear Velocity
     float moveSpeed = 5.5f;
     b3Vec3 curVel = b3Body_GetLinearVelocity(app->capsuleId);
     float targetVx = 0.0f;
@@ -221,7 +223,7 @@ void updateFpsController(App *app, float deltaTime)
         targetVz = moveDir[2] * moveSpeed;
     }
 
-    // 5. Jump
+    // Jump
     float vy = curVel.y;
     if (app->jumpRequested && std::abs(curVel.y) < 0.25f)
     {
@@ -231,6 +233,12 @@ void updateFpsController(App *app, float deltaTime)
     else
     {
         app->jumpRequested = false;
+    }
+
+    // Always wake body up when movement or jump occurs
+    if (len > 0.001f || app->jumpRequested)
+    {
+        b3Body_SetAwake(app->capsuleId, true);
     }
 
     b3Body_SetLinearVelocity(app->capsuleId, (b3Vec3){ targetVx, vy, targetVz });

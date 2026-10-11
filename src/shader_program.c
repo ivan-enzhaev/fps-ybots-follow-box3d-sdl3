@@ -6,7 +6,7 @@ char *get_final_shader_source(const char *source)
 {
     const char *header =
 #if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
-        "#version 300 es\nprecision mediump float;\n";
+        "#version 300 es\nprecision highp float;\nprecision highp int;\n";
 #else
         "#version 330 core\n";
 #endif

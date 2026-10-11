@@ -36,6 +36,9 @@ inline bool initPhysicsWorld(App *app)
     locks.angularZ = true;
     capsuleBodyDef.motionLocks = locks;
 
+    // Prevent physics engine from freezing the character
+    capsuleBodyDef.enableSleep = false;
+
     app->capsuleId = b3CreateBody(app->worldId, &capsuleBodyDef);
     b3Capsule capsule = {
         .center1 = { 0.0f, -0.7f, 0.0f },
